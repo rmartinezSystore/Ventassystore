@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Ventas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0f;--surface:#12121a;--s2:#1a1a26;--border:#252535;
+  --accent:#7c6af7;--a2:#f7a26a;--a3:#6af7c2;--a4:#f76a8a;
+  --text:#e8e8f0;--t2:#8888aa;--t3:#555570;
+  --ok:#4ade80;--no:#f87171;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;}
+
+/* LOADING */
+#splash{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .4s;}
+#splash.out{opacity:0;pointer-events:none;}
+.splash-logo{font-family:'Space Mono',monospace;font-size:22px;color:var(--accent);}
+.splash-msg{font-size:13px;color:var(--t2);}
+.bar-track{width:220px;height:3px;background:var(--border);border-radius:3px;overflow:hidden;}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--a3));border-radius:3px;width:0;transition:width .4s;}
+.splash-err{max-width:420px;text-align:center;background:rgba(247,106,138,.08);border:1px solid rgba(247,106,138,.25);border-radius:12px;padding:20px 24px;display:none;}
+.splash-err h3{font-size:14px;color:var(--a4);margin-bottom:8px;}
+.splash-err p{font-size:12px;color:var(--t2);line-height:1.7;}
+.splash-err code{color:var(--a3);font-family:'Space Mono',monospace;font-size:11px;}
+
+/* HEADER */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 28px;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:10px;}
+.logo{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;color:var(--accent);}
+.logo span{color:var(--t2);font-weight:400;font-size:11px;margin-left:8px;}
+.logo em{font-style:normal;font-size:10px;color:var(--a3);margin-left:8px;font-family:'DM Sans',sans-serif;}
+.hright{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.obj-label{font-size:12px;color:var(--t2);}
+.obj-input{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;
+  color:var(--text);font-family:'Space Mono',monospace;font-size:12px;width:150px;outline:none;transition:border-color .2s;}
+.obj-input:focus{border-color:var(--accent);}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;
+  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s;}
+.btn:hover{opacity:.85;}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--t2);}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent);}
+
+/* LAYOUT */
+.main{padding:22px 28px;max-width:1600px;margin:0 auto;}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:13px;margin-bottom:20px;}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:17px 19px;position:relative;overflow:hidden;}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--al,var(--accent));border-radius:3px 3px 0 0;}
+.kpi-label{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;}
+.kpi-value{font-family:'Space Mono',monospace;font-size:21px;font-weight:700;line-height:1;margin-bottom:4px;}
+.kpi-sub{font-size:11px;color:var(--t3);}
+.kpi-badge{display:inline-flex;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;margin-top:5px;}
+.bg{background:rgba(74,222,128,.15);color:var(--ok);}
+.br{background:rgba(248,113,113,.15);color:var(--no);}
+.by{background:rgba(250,204,21,.15);color:#facc15;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.g23{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px;}
+.g32{display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:16px;}
+@media(max-width:1100px){.g2,.g23,.g32{grid-template-columns:1fr;}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:20px;}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.ct{font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;}
+.ct2{font-size:14px;font-weight:700;}
+.tbl{width:100%;border-collapse:collapse;}
+.tbl th{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);font-weight:600;padding:6px 9px;text-align:left;border-bottom:1px solid var(--border);}
+.tbl td{font-size:12px;padding:8px 9px;border-bottom:1px solid rgba(37,37,53,.5);}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:rgba(124,106,247,.04);}
+.mono{font-family:'Space Mono',monospace;font-size:11px;}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;flex-shrink:0;}
+.frow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.fbtn{background:var(--s2);border:1px solid var(--border);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--t2);cursor:pointer;transition:all .2s;}
+.fbtn:hover,.fbtn.active{border-color:var(--accent);color:var(--accent);background:rgba(124,106,247,.1);}
+.fp{background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:10px 13px;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.fpl{font-size:11px;color:var(--t2);}
+.fpv{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--a3);}
+.rank{font-family:'Space Mono',monospace;font-size:10px;color:var(--t3);background:var(--s2);border-radius:4px;padding:1px 5px;margin-right:4px;}
+.sep{height:1px;background:var(--border);margin:14px 0;}
+.pb-track{background:var(--border);border-radius:4px;height:5px;overflow:hidden;}
+.pb-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--a3));transition:width .6s;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="splash-logo">ventas.dash</div>
+  <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
+  <div class="splash-msg" id="splashMsg">Cargando datos...</div>
+  <div class="splash-err" id="splashErr">
+    <h3>No se encontró data.xlsx</h3>
+    <p>El dashboard busca un archivo llamado <code>data.xlsx</code> (o <code>data.csv</code>) en la misma carpeta.<br><br>
+    Asegúrate de subir ambos archivos juntos a Netlify:<br>
+    <code>dashboard.html</code> + <code>data.xlsx</code></p>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo" id="logoEl">ventas.dash <span id="logoSub">Mayo 2026</span></div>
+  <div class="hright">
+    <span class="obj-label">🎯 Objetivo:</span>
+    <input class="obj-input" type="text" id="objInput" value="10,000,000">
+    <button class="btn" onclick="applyObj()">Actualizar</button>
+    <button class="btn btn-ghost" onclick="location.reload()">↻ Recargar</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="main" id="main" style="display:none;">
+  <div class="kpi-row" id="kpiRow"></div>
+  <div class="card" style="margin-bottom:16px;" id="progCard"></div>
+
+  <div class="g23">
+    <div class="card">
+      <div class="ch"><span class="ct">Venta por día</span><span id="avgBadge" class="kpi-badge by"></span></div>
+      <div style="height:240px;"><canvas id="cDay"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="ct">Share por canal</span></div>
+      <div style="height:200px;"><canvas id="cDonut"></canvas></div>
+      <div id="legend" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <div class="g32">
+    <div class="card">
+      <div class="ch"><span class="ct2">Performance por canal</span></div>
+      <div style="overflow-x:auto;"><table class="tbl" id="tChannel"></table></div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="ct">Forecast del mes</span></div>
+      <div id="forecast"></div>
+      <div class="sep"></div>
+      <div class="ch" style="margin-bottom:8px;"><span class="ct">Forecast piezas</span></div>
+      <div id="fPiezas"></div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="ch"><span class="ct">Venta por canal</span></div>
+      <div style="height:250px;"><canvas id="cBar"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="ct">Piezas por canal</span></div>
+      <div style="height:250px;"><canvas id="cPiezas"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:24px;">
+    <div class="ch">
+      <span class="ct2">Top productos</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:10px;color:var(--t3);background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;">Abiertos + Cerrados</span>
+        <span id="filtLabel" style="font-size:11px;color:var(--t3);">Todos los canales</span>
+      </div>
+    </div>
+    <div class="frow" id="filtBtns"></div>
+    <div style="overflow-x:auto;"><table class="tbl" id="tProducts"></table></div>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG ────────────────────────────────────────────────
+const CC = {
+  'Walmart':'#0071ce','Elektra v2':'#ff6600','Mercadolibre':'#f0c314',
+  'Coppel':'#4a7fc1','Doto':'#00b4d8','Amazon':'#ff9900','Total Play':'#00a651',
+};
+const gc = ch => CC[ch]||'#7c6af7';
+let OBJ = 10000000, FAL = 0, CH = {};
+
+// ─── HELPERS ────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt  = n => '$'+Math.round(n).toLocaleString('es-MX');
+const fmtN = n => Math.round(n).toLocaleString('es-MX');
+const pct  = (v,t) => t>0?(v/t*100).toFixed(1)+'%':'0%';
+function prog(p,msg){ $('bar').style.width=p+'%'; $('splashMsg').textContent=msg; }
+
+// ─── LOAD DATA.XLSX / DATA.CSV ──────────────────────────────
+async function loadFile() {
+  // Try xlsx first, then csv
+  const attempts = [
+    { url:'./data.xlsx', type:'xlsx' },
+    { url:'./data.csv',  type:'csv'  },
+  ];
+
+  for (const { url, type } of attempts) {
+    try {
+      prog(20, `Buscando ${url}...`);
+      const res = await fetch(url+'?t='+Date.now(), { cache:'no-cache' });
+      if (!res.ok) continue;
+
+      prog(50, 'Procesando archivo...');
+      let matrix;
+
+      if (type === 'csv') {
+        const text = await res.text();
+        matrix = csvToMatrix(text);
+      } else {
+        const buf  = await res.arrayBuffer();
+        const wb   = XLSX.read(new Uint8Array(buf), { type:'array', cellDates:false });
+        matrix     = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, raw:true, defval:'' });
+      }
+
+      prog(75, 'Filtrando pedidos...');
+      const rows = parseRows(matrix);
+      if (rows.length === 0) throw new Error('Sin filas Abierto/Cerrado');
+
+      prog(100, `✓ ${rows.length.toLocaleString()} registros`);
+      return { rows, source: url };
+    } catch(e) {
+      console.log(`${url}: ${e.message}`);
+    }
+  }
+  return null;
+}
+
+// ─── CSV PARSER ──────────────────────────────────────────────
+function csvToMatrix(text) {
+  const rows = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const cols = []; let cur='', inQ=false;
+    for (let i=0; i<line.length; i++) {
+      const c=line[i];
+      if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+      else if(c===','&&!inQ){cols.push(cur.trim());cur='';}
+      else cur+=c;
+    }
+    cols.push(cur.trim()); rows.push(cols);
+  }
+  return rows;
+}
+
+// ─── ROW PARSER ─────────────────────────────────────────────
+function parseRows(matrix) {
+  const rows = [];
+  let hi = matrix.findIndex(r => r.some(c => String(c).toLowerCase().includes('fecha')));
+  if (hi<0) hi=0;
+  const hdr = matrix[hi].map(c=>String(c).trim().toLowerCase());
+  const ci = {
+    estado:   hdr.findIndex(h=>h.includes('estado')),
+    fecha:    hdr.findIndex(h=>h.includes('fecha')),
+    articulo: hdr.findIndex(h=>h.includes('art')||h.includes('culo')),
+    cantidad: hdr.findIndex(h=>h.includes('cantidad')),
+    monto:    hdr.findIndex(h=>h.includes('monto')||h.includes('total')||h.includes('importe')),
+    canal:    hdr.findIndex(h=>h.includes('canal')),
+  };
+  for (let i=hi+1; i<matrix.length; i++) {
+    const r=matrix[i]; if(!r||r.length<5) continue;
+    const g=idx=>idx>=0?String(r[idx]??'').trim():'';
+    const estado=g(ci.estado);
+    if(estado!=='Abierto'&&estado!=='Cerrado') continue;
+    let date='';
+    const rd=ci.fecha>=0?r[ci.fecha]:'';
+    if(typeof rd==='number'){
+      const d=XLSX.SSF.parse_date_code(rd);
+      date=`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+    } else {
+      date=String(rd).split(' ')[0].split('T')[0];
+    }
+    if(!date||date.length<8) continue;
+    const producto=g(ci.articulo)||'Sin nombre';
+    const cantidad=parseInt(g(ci.cantidad))||1;
+    const monto=parseFloat(String(r[ci.monto]??'').replace(/[$,\s]/g,''))||0;
+    const canal=g(ci.canal)||'Otros';
+    if(monto===0) continue;
+    rows.push({date,producto,cantidad,monto,canal});
+  }
+  return rows;
+}
+
+// ─── AGGREGATIONS ────────────────────────────────────────────
+function aggBy(rows, key) {
+  const m={};
+  rows.forEach(r=>{if(!m[r[key]])m[r[key]]={monto:0,piezas:0,pedidos:0};m[r[key]].monto+=r.monto;m[r[key]].piezas+=r.cantidad;m[r[key]].pedidos++;});
+  return m;
+}
+function aggProds(rows) {
+  const m={};
+  rows.forEach(r=>{if(!m[r.producto])m[r.producto]={monto:0,piezas:0,pedidos:0};m[r.producto].monto+=r.monto;m[r.producto].piezas+=r.cantidad;m[r.producto].pedidos++;});
+  return Object.entries(m).map(([p,v])=>({p,...v})).sort((a,b)=>b.monto-a.monto);
+}
+
+// ─── RENDER ──────────────────────────────────────────────────
+function render(rows) {
+  window._rows = rows;
+  CH = aggBy(rows,'canal');
+  const byDay  = aggBy(rows,'date');
+  const days   = Object.keys(byDay).sort();
+  const tv     = rows.reduce((s,r)=>s+r.monto,0);
+  const tpz    = rows.reduce((s,r)=>s+r.cantidad,0);
+  const tped   = rows.length;
+  const ticket = tped?tv/tped:0;
+
+  const MD    = 31;
+  const last  = days.length?parseInt(days[days.length-1].split('-')[2]):1;
+  const elap  = Math.max(1,last);
+  const left  = Math.max(0,MD-elap);
+  const dAvg  = tv/elap;
+  const fcast = tv+dAvg*left;
+  const cumpl = OBJ>0?tv/OBJ*100:0;
+  const fcPct = OBJ>0?fcast/OBJ*100:0;
+  const falt  = Math.max(0,OBJ-tv);
+  FAL         = falt;
+  const dpz   = tpz/elap;
+  const fcpz  = tpz+dpz*left;
+
+  // KPIs
+  $('kpiRow').innerHTML=[
+    {l:'Venta Total',    v:fmt(tv),         s:`${fmtN(tped)} pedidos`,           al:'#7c6af7'},
+    {l:'Objetivo',       v:fmt(OBJ),        s:'Meta mensual',                    al:'#f7a26a'},
+    {l:'Cumplimiento',   v:cumpl.toFixed(1)+'%',s:'vs objetivo',                 al:'#6af7c2',
+      bd:cumpl>=80?'bg':cumpl>=50?'by':'br',bt:cumpl>=80?'✓ Buen ritmo':cumpl>=50?'~ En camino':'⚠ Bajo'},
+    {l:'Forecast Mes',   v:fmt(fcast),      s:fcPct.toFixed(1)+'% del objetivo', al:'#f76a8a'},
+    {l:'Total Piezas',   v:fmtN(tpz),       s:`~${dpz.toFixed(0)} pzas/día`,     al:'#7c6af7'},
+    {l:'Ticket Promedio',v:fmt(ticket),     s:'Por pedido',                       al:'#f7a26a'},
+    {l:'Venta Faltante', v:fmt(falt),       s:'Para el objetivo',                 al:'#6af7c2'},
+    {l:'Días Restantes', v:left,            s:`de ${MD} días en mayo`,            al:'#f76a8a'},
+  ].map(k=>`<div class="kpi" style="--al:${k.al}">
+    <div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v}</div><div class="kpi-sub">${k.s}</div>
+    ${k.bd?`<span class="kpi-badge ${k.bd}">${k.bt}</span>`:''}
+  </div>`).join('');
+
+  // Progress
+  const fp=Math.min(100,cumpl).toFixed(1),ff=Math.min(100,fcPct).toFixed(1);
+  $('progCard').innerHTML=`
+    <div class="ch"><span class="ct2">Progreso del objetivo mensual</span>
+    <span style="font-size:11px;color:var(--t2);">Día ${elap} de ${MD} — ${left} días restantes</span></div>
+    <div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+      <span style="font-size:12px;color:var(--t2);">Real: <strong>${fmt(tv)}</strong></span>
+      <span style="font-size:12px;color:var(--t2);">${fp}%</span></div>
+      <div class="pb-track"><div class="pb-fill" id="pb1" style="width:0%"></div></div></div>
+    <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+      <span style="font-size:12px;color:var(--t2);">Forecast: <strong style="color:var(--a3)">${fmt(fcast)}</strong></span>
+      <span style="font-size:12px;color:var(--a3);">${ff}%</span></div>
+      <div class="pb-track"><div style="height:100%;border-radius:4px;background:linear-gradient(90deg,var(--a3),var(--accent));width:0%;transition:width .6s;" id="pb2"></div></div></div>`;
+  setTimeout(()=>{$('pb1').style.width=fp+'%';$('pb2').style.width=ff+'%';},300);
+
+  $('avgBadge').textContent=`Prom: ${fmt(dAvg)}/día`;
+
+  // Charts
+  rDay(days.map(d=>d.split('-')[2]+'/may'),days.map(d=>byDay[d].monto));
+  rDonut(CH,tv);
+  rBar(CH);
+  rPiezas(CH);
+  rChannel(CH,tv);
+  rForecast({dAvg,fcast,falt,left,dpz,fcpz,tpz});
+  rProducts(rows);
+
+  const chs=['Todos',...Object.keys(CH).sort((a,b)=>CH[b].monto-CH[a].monto)];
+  $('filtBtns').innerHTML=chs.map(ch=>
+    `<button class="fbtn ${ch==='Todos'?'active':''}" onclick="filtBy('${ch.replace(/'/g,"\\'")}',this)">${ch}</button>`
+  ).join('');
+}
+
+function filtBy(ch,btn){
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  $('filtLabel').textContent=ch==='Todos'?'Todos los canales':ch;
+  rProducts(ch==='Todos'?window._rows:window._rows.filter(r=>r.canal===ch));
+}
+
+// ─── CHARTS ──────────────────────────────────────────────────
+Chart.defaults.color='#8888aa'; Chart.defaults.borderColor='#252535';
+const CS={};
+function dc(id){if(CS[id]){CS[id].destroy();delete CS[id];}}
+
+function rDay(labels,values){
+  dc('d'); const ctx=$('cDay').getContext('2d');
+  const g=ctx.createLinearGradient(0,0,0,240);g.addColorStop(0,'rgba(124,106,247,.3)');g.addColorStop(1,'rgba(124,106,247,0)');
+  CS['d']=new Chart(ctx,{type:'line',data:{labels,datasets:[{data:values,borderColor:'#7c6af7',backgroundColor:g,fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#7c6af7',pointBorderColor:'#0a0a0f',pointBorderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmt(c.raw)}}},scales:{x:{grid:{color:'#1a1a26'},ticks:{maxRotation:45,font:{size:10}}},y:{grid:{color:'#1a1a26'},ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k',font:{size:10}}}}}});
+}
+function rDonut(byCh,tv){
+  dc('do'); const s=Object.entries(byCh).sort((a,b)=>b[1].monto-a[1].monto);
+  CS['do']=new Chart($('cDonut').getContext('2d'),{type:'doughnut',data:{labels:s.map(([c])=>c),datasets:[{data:s.map(([,v])=>v.monto),backgroundColor:s.map(([c])=>gc(c)),borderColor:'#0a0a0f',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${fmt(c.raw)} (${pct(c.raw,tv)})`}}}}});
+  $('legend').innerHTML=s.slice(0,7).map(([c,v])=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0;font-size:11px;"><div style="display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:50%;background:${gc(c)};display:inline-block;"></span><span style="color:var(--t2);">${c}</span></div><span style="font-family:'Space Mono',monospace;font-size:10px;">${pct(v.monto,tv)}</span></div>`).join('');
+}
+function rBar(byCh){
+  dc('b'); const s=Object.entries(byCh).sort((a,b)=>b[1].monto-a[1].monto);
+  CS['b']=new Chart($('cBar').getContext('2d'),{type:'bar',data:{labels:s.map(([c])=>c),datasets:[{data:s.map(([,v])=>v.monto),backgroundColor:s.map(([c])=>gc(c)+'cc'),borderColor:s.map(([c])=>gc(c)),borderWidth:1,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmt(c.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#1a1a26'},ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k',font:{size:10}}}}}});
+}
+function rPiezas(byCh){
+  dc('p'); const s=Object.entries(byCh).sort((a,b)=>b[1].piezas-a[1].piezas);
+  CS['p']=new Chart($('cPiezas').getContext('2d'),{type:'bar',data:{labels:s.map(([c])=>c),datasets:[{data:s.map(([,v])=>v.piezas),backgroundColor:s.map(([c])=>gc(c)+'99'),borderColor:s.map(([c])=>gc(c)),borderWidth:1,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmtN(c.raw)} pzas`}}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#1a1a26'},ticks:{font:{size:10}}}}}});
+}
+function rChannel(byCh,tv){
+  const s=Object.entries(byCh).sort((a,b)=>b[1].monto-a[1].monto);
+  $('tChannel').innerHTML=`<thead><tr><th>Canal</th><th>Venta</th><th>Share</th><th>Piezas</th><th>Pedidos</th><th>Ticket Prom</th></tr></thead><tbody>${s.map(([c,v])=>`<tr><td><div style="display:flex;align-items:center;"><span class="dot" style="background:${gc(c)}"></span>${c}</div></td><td class="mono">${fmt(v.monto)}</td><td><div style="display:flex;align-items:center;gap:6px;"><div style="width:50px;background:var(--border);border-radius:3px;height:4px;"><div style="width:${Math.min(100,v.monto/tv*100)}%;background:${gc(c)};height:100%;border-radius:3px;"></div></div><span class="mono">${(v.monto/tv*100).toFixed(1)}%</span></div></td><td class="mono">${fmtN(v.piezas)}</td><td class="mono">${fmtN(v.pedidos)}</td><td class="mono">${fmt(v.monto/v.pedidos)}</td></tr>`).join('')}</tbody>`;
+}
+function rForecast({dAvg,fcast,falt,left,dpz,fcpz,tpz}){
+  const need=left>0?falt/left:0,ok=dAvg>=need;
+  $('forecast').innerHTML=`<div class="fp"><span class="fpl">Promedio diario</span><span class="fpv">${fmt(dAvg)}</span></div><div class="fp"><span class="fpl">Necesario por día</span><span class="fpv" style="color:${ok?'var(--ok)':'var(--no)'};">${fmt(need)}</span></div><div class="fp"><span class="fpl">Forecast fin de mes</span><span class="fpv">${fmt(fcast)}</span></div><div class="fp"><span class="fpl">Faltante vs objetivo</span><span class="fpv" style="color:${falt===0?'var(--ok)':'var(--no)'};">${fmt(falt)}</span></div><div style="margin-top:9px;padding:8px 12px;border-radius:8px;background:${ok?'rgba(74,222,128,.1)':'rgba(248,113,113,.1)'};border:1px solid ${ok?'rgba(74,222,128,.3)':'rgba(248,113,113,.3)'};font-size:11px;color:${ok?'var(--ok)':'var(--no)'};">${ok?'✓ Al ritmo actual se ALCANZA el objetivo':'⚠ Se necesita acelerar para alcanzar el objetivo'}</div>`;
+  $('fPiezas').innerHTML=`<div class="fp"><span class="fpl">Piezas actuales</span><span class="fpv">${fmtN(tpz)}</span></div><div class="fp"><span class="fpl">Prom piezas/día</span><span class="fpv">${dpz.toFixed(1)}</span></div><div class="fp"><span class="fpl">Forecast piezas</span><span class="fpv">${fmtN(fcpz)}</span></div><div class="fp"><span class="fpl">Días restantes</span><span class="fpv">${left} días</span></div>`;
+}
+function rProducts(rows){
+  const ps=aggProds(rows).slice(0,20),tv=rows.reduce((s,r)=>s+r.monto,0);
+  $('tProducts').innerHTML=`<thead><tr><th>#</th><th>Producto</th><th>Venta</th><th>Share</th><th>Piezas</th><th>Pedidos</th><th>Ticket</th><th>Pzas faltantes 🎯</th></tr></thead><tbody>${ps.map((p,i)=>{const tk=p.monto/p.pedidos,sh=tv>0?p.monto/tv:0,pf=tk>0?Math.ceil((FAL*sh)/tk):0;return`<tr><td><span class="rank">${String(i+1).padStart(2,'0')}</span></td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.p}">${p.p}</td><td class="mono">${fmt(p.monto)}</td><td><div style="display:flex;align-items:center;gap:5px;"><div style="width:40px;background:var(--border);border-radius:3px;height:3px;"><div style="width:${Math.min(100,sh*100)}%;background:var(--accent);height:100%;border-radius:3px;"></div></div><span class="mono" style="font-size:10px;">${(sh*100).toFixed(1)}%</span></div></td><td class="mono">${fmtN(p.piezas)}</td><td class="mono">${fmtN(p.pedidos)}</td><td class="mono">${fmt(tk)}</td><td class="mono" style="color:${pf<=0?'var(--ok)':'var(--a3)'};font-weight:600;">${pf<=0?'✓':'+'+fmtN(pf)}</td></tr>`;}).join('')}</tbody>`;
+}
+
+// ─── CONTROLS ────────────────────────────────────────────────
+function applyObj(){
+  const v=parseInt($('objInput').value.replace(/[^0-9]/g,''));
+  if(v>0){OBJ=v;$('objInput').value=v.toLocaleString('es-MX');if(window._rows)render(window._rows);}
+}
+$('objInput').addEventListener('keydown',e=>{if(e.key==='Enter')applyObj();});
+
+// ─── INIT ─────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  const result = await loadFile();
+
+  if (!result) {
+    $('splashErr').style.display='block';
+    $('splashMsg').textContent='Archivo no encontrado';
+    $('bar').style.background='var(--no)';
+    $('bar').style.width='100%';
+    return;
+  }
+
+  const { rows, source } = result;
+  const ts = new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  $('logoEl').innerHTML = `ventas.dash <span>Mayo 2026</span><em>● ${rows.length.toLocaleString()} registros · ${source.replace('./','')} · ${ts}</em>`;
+
+  $('main').style.display = 'block';
+  render(rows);
+
+  const splash = $('splash');
+  splash.classList.add('out');
+  setTimeout(()=>splash.style.display='none', 450);
+});
+</script>
+</body>
+</html>
